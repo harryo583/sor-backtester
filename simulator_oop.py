@@ -111,24 +111,24 @@ class Strategy(abc.ABC):
     to generate orders given the market state and an outstanding position.
     """
     
-    def __init__(self, total_shares: int, strategy_name: str = "BaseStrategy"):
+    def __init__(self, total_shares: int, strategy_name: str = "BaseStrategy", side: str = "BUY"):
         self.total_shares = total_shares
         self.strategy_name = strategy_name
+        self.side = side
         self.accumulated_shares = 0  # how many shares have been bought/sold
     
     @abc.abstractmethod
     def generate_orders(self, market_info: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Each strategy must define how many shares to trade at the current step.
-        Takes in market_info - a dictionary with current 'price' 'volume' etc.
-        Returns a dictionary:
-            {
-                'shares_to_execute': int,
-                'price': float,
-                'timestamp': pd.Timestamp
-            }
+        Must return dict with:
+          {
+            'shares_to_execute': int,
+            'side': str,  # 'BUY' or 'SELL'
+            'timestamp': pd.Timestamp
+          }
         """
         pass
+
 
 class TWAPStrategy(Strategy):
     """
