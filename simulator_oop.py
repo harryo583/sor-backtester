@@ -18,7 +18,8 @@ class MarketEnvironment:
         base_volume: int = 300,
         volatility_factor: float = 0.2,
         volume_spike_probability: float = 0.0,
-        volume_spike_factor: float = 3.0
+        volume_spike_factor: float = 3.0,
+        fixed_spread: float = 0.02
     ):
         """
         start_price: initial price of the asset at the beginning of the day
@@ -27,6 +28,7 @@ class MarketEnvironment:
         volatility_factor: standard deviation for random walk steps
         volume_spike_probability: probability of a volume spike occurring at each time step
         volume_spike_factor: multiplier for volume at spike time
+        fixed_spread: distance between bid and ask
         """
         self.start_price = start_price
         self.num_points = num_points
@@ -34,6 +36,7 @@ class MarketEnvironment:
         self.volatility_factor = volatility_factor
         self.volume_spike_probability = volume_spike_probability
         self.volume_spike_factor = volume_spike_factor
+        self.fixed_spread = fixed_spread
         
         self.market_data = self._generate_synthetic_data() # internal dataframe storing the market state at each timestep
         self.current_step = 0 # "current time"
@@ -53,29 +56,40 @@ class MarketEnvironment:
         
         # Generate volumes
         volumes = np.random.poisson(self.base_volume, self.num_points)
-        
-        # Apply volume spikes
         for i in range(self.num_points):
             if np.random.rand() < self.volume_spike_probability:
                 volumes[i] = int(volumes[i] * self.volume_spike_factor)
         
-        return pd.DataFrame({
+        # Split into bid and ask volumes (assume 50-50)
+        bid_volumes = np.floor(volumes * 0.5).astype(int)
+        ask_volumes = volumes - bid_volumes  # remainder
+        
+        # Construct bid / ask prices
+        df = pd.DataFrame({
             'timestamp': timestamps,
-            'price': prices,
-            'volume': volumes
+            'mid_price': prices,
+            'total_volume': volumes,
+            'bid_volume': bid_volumes,
+            'ask_volume': ask_volumes
         })
-
+        df['bid_price'] = df['mid_price'] - (self.fixed_spread / 2.0)
+        df['ask_price'] = df['mid_price'] + (self.fixed_spread / 2.0)
+        
+        return df
+        
     def get_current_state(self) -> Dict[str, Any]:
         """
-        Returns current market information (time, price, volume).
+        Returns a dictionary of current bid/ask info and volumes.
         """
         if self.current_step >= self.num_points:
-            return None  # no more data left
+            return None
         row = self.market_data.iloc[self.current_step]
         return {
             'time': row['timestamp'],
-            'price': row['price'],
-            'volume': row['volume']
+            'bid_price': row['bid_price'],
+            'ask_price': row['ask_price'],
+            'bid_volume': row['bid_volume'],
+            'ask_volume': row['ask_volume']
         }
 
     def step(self):
@@ -191,7 +205,6 @@ class VWAPStrategy(Strategy):
             'price': price,
             'timestamp': ts
         }
-
 
 class Backtester:
     """
