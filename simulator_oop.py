@@ -275,3 +275,67 @@ class Backtester:
             'Execution Cost vs. VWAP': exec_cost,
             'Slippage (average)': avg_slippage
         }
+
+    def plot_results(self):
+        """
+        Plot the market price and overlay execution points.
+        """
+        if not self.execution_records:
+            print("No executions to plot.")
+            return
+        
+        mkt_df = self.market_env.market_data
+        exec_df = pd.DataFrame(self.execution_records)
+        
+        plt.figure(figsize=(10, 5))
+        plt.plot(mkt_df['timestamp'], mkt_df['price'], label='Market Price')
+        plt.scatter(exec_df['timestamp'], exec_df['execution_price'], 
+                    color='red', label='Executions', s=10)
+        plt.xticks(rotation=45)
+        plt.xlabel("Time")
+        plt.ylabel("Price")
+        plt.title(f"{self.strategy.strategy_name} Execution vs. Market Price")
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+
+
+if __name__ == "__main__":
+
+    # Simple scenario with standard volatility and no volume spike
+    market_env1 = MarketEnvironment(
+        start_price=100.0,
+        num_points=390,
+        base_volume=300,
+        volatility_factor=0.2,
+        volume_spike_probability=0.0,
+        volume_spike_factor=3.0
+    )
+    twap_strategy1 = TWAPStrategy(total_shares=10000, total_steps=390)
+    backtester1 = Backtester(market_env=market_env1, strategy=twap_strategy1)
+    backtester1.run()
+    metrics1 = backtester1.calculate_metrics()
+    
+    for k, v in metrics1.items():
+        print(f"{k}: {v:.4f}")
+    
+    backtester1.plot_results()
+    
+    # Scenario with higher volatility and a midday volume spike
+    market_env2 = MarketEnvironment(
+        start_price=100.0,
+        num_points=390,
+        base_volume=300,
+        volatility_factor=0.5, # higher volatility
+        volume_spike_probability=0.1, # volume spike around midday
+        volume_spike_factor=5.0
+    )
+    twap_strategy2 = TWAPStrategy(total_shares=10000, total_steps=390)
+    backtester2 = Backtester(market_env=market_env2, strategy=twap_strategy2)
+    backtester2.run()
+    metrics2 = backtester2.calculate_metrics()
+    
+    for k, v in metrics2.items():
+        print(f"{k}: {v:.4f}")
+    
+    backtester2.plot_results()
