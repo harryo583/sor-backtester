@@ -191,3 +191,87 @@ class VWAPStrategy(Strategy):
             'price': price,
             'timestamp': ts
         }
+
+
+class Backtester:
+    """
+    Orchestrates the simulation, steps through each time increment, querying the
+    strategy for orders, executing them, and recording results.
+    """
+    
+    def __init__(self, market_env: MarketEnvironment, strategy: Strategy):
+        self.market_env = market_env
+        self.strategy = strategy
+        self.execution_records: List[Dict[str, Any]] = [] # keep track of executions
+        
+    def run(self):
+        """
+        For each timestep, gather market state, get strategy orders, and record the execution info.
+        """
+        self.market_env.reset()
+        
+        while True: # main loop!
+            market_info = self.market_env.get_current_state()
+            if not market_info: break
+            
+            order = self.strategy.generate_orders(market_info)
+            
+            if order['shares_to_execute'] > 0:
+                self.execution_records.append({
+                    'timestamp': order['timestamp'],
+                    'execution_price': order['price'],
+                    'execution_volume': order['shares_to_execute']
+                })
+            
+            self.market_env.step()
+    
+    def calculate_metrics(self) -> Dict[str, float]:
+        """
+        Calculates the following metrics:
+          1. Overall VWAP.
+          2. Average execution price.
+          3. Execution cost vs VWAP.
+          4. Simple slippage measure.
+        """
+        exec_df = pd.DataFrame(self.execution_records)
+        if exec_df.empty:
+            return {
+                'Overall VWAP': 0.0,
+                'Avg Execution Price': 0.0,
+                'Execution Cost vs. VWAP': 0.0,
+                'Slippage (average)': 0.0
+            }
+        
+        # 1. Overall VWAP from market environment
+        mkt_df = self.market_env.market_data
+        total_dollar_volume = (mkt_df['price'] * mkt_df['volume']).sum()
+        total_volume = mkt_df['volume'].sum()
+        overall_vwap = total_dollar_volume / total_volume
+        
+        # 2. Average execution price
+        total_exec_dollar = (exec_df['execution_price'] * exec_df['execution_volume']).sum()
+        total_exec_volume = exec_df['execution_volume'].sum()
+        avg_exec_price = total_exec_dollar / total_exec_volume
+        
+        # 3. Execution cost vs. VWAP
+        exec_cost = avg_exec_price - overall_vwap
+        
+        # 4. Slippage
+        merged = pd.merge(
+            exec_df, 
+            mkt_df, 
+            left_on='timestamp', 
+            right_on='timestamp',
+            how='left'
+        ) # merge execution times with corresponding market prices to see deviation
+        merged['slippage_per_share'] = merged['execution_price'] - merged['price']
+        merged['weighted_slippage'] = merged['slippage_per_share'] * merged['execution_volume']
+        total_slippage = merged['weighted_slippage'].sum()
+        avg_slippage = total_slippage / total_exec_volume
+        
+        return {
+            'Overall VWAP': overall_vwap,
+            'Avg Execution Price': avg_exec_price,
+            'Execution Cost vs. VWAP': exec_cost,
+            'Slippage (average)': avg_slippage
+        }
