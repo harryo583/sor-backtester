@@ -206,242 +206,147 @@ class TWAPStrategy(Strategy):
 
 class Backtester:
     """
-    Orchestrates the simulation. On each time step:
-      1. Fetches market environment state (bid/ask, volumes).
-      2. Asks the strategy how many shares to trade (and side).
-      3. Fills them incrementally, possibly moving the price if volume is exceeded.
-      4. Records the fill details.
-      5. Steps the environment.
+    Orchestrates the simulation, steps through each time increment, querying the
+    strategy for orders, executing them, and recording results.
     """
     
     def __init__(self, market_env: MarketEnvironment, strategy: Strategy):
         self.market_env = market_env
         self.strategy = strategy
-        self.execution_records: List[Dict[str, Any]] = []
-    
+        self.execution_records: List[Dict[str, Any]] = [] # keep track of executions
+        
     def run(self):
         """
-        Main simulation loop: gather orders from strategy, fill them, track partial fills & price movements.
+        For each timestep, gather market state, get strategy orders, and record the execution info.
         """
         self.market_env.reset()
         
-        while True:
+        while True: # main loop!
             market_info = self.market_env.get_current_state()
-            if market_info is None:
-                break  # end of simulation
-
-            # 1. Strategy decides how many shares to trade this step
+            if not market_info: break
+            
             order = self.strategy.generate_orders(market_info)
-            shares_to_execute = order['shares_to_execute']
-            side = order['side']
-            ts = order['timestamp']
-
-            if shares_to_execute <= 0 or ts is None: # no trade or no data
-                self.market_env.step()
-                continue
-
-            # 2. Attempt to fill the order in increments:
-            #  If BUY, we consume available ask volume at the current ask_price.
-            #  If we exceed the ask volume, assume the price increments by some small tick 
-            #  (e.g. 1 cent) and we get more volume (a naive approach).
-            #  Same logic for SELL at the bid side.
-
-            if side == "BUY":
-                filled_shares, avg_fill_price = self._simulate_buy(
-                    shares_to_execute,
-                    initial_ask_price=market_info['ask_price'],
-                    initial_ask_volume=market_info['ask_volume']
-                )
-            else:  # SELL
-                filled_shares, avg_fill_price = self._simulate_sell(
-                    shares_to_execute,
-                    initial_bid_price=market_info['bid_price'],
-                    initial_bid_volume=market_info['bid_volume']
-                )
-
-            if filled_shares > 0:
+            
+            if order['shares_to_execute'] > 0:
                 self.execution_records.append({
-                    'timestamp': ts,
-                    'execution_price': avg_fill_price,
-                    'execution_volume': filled_shares,
-                    'side': side
+                    'timestamp': order['timestamp'],
+                    'execution_price': order['price'],
+                    'execution_volume': order['shares_to_execute']
                 })
-
+            
             self.market_env.step()
-
-    def _simulate_buy(self, shares_to_buy: int, initial_ask_price: float, initial_ask_volume: int):
-        """
-        Naive partial-fill simulation for a BUY order
-        """
-        remaining = shares_to_buy
-        current_price = initial_ask_price
-        current_volume = initial_ask_volume
-        
-        fill_details = []  # (shares_filled, fill_price)
-        price_impact_tick = 0.01  # how much the ask moves each time we deplete available volume
-
-        while remaining > 0:
-            if current_volume >= remaining: # we fill the entire remainder at current_price
-                fill_details.append((remaining, current_price))
-                current_volume -= remaining
-                remaining = 0
-            else: # we consume all of current_volume at current_price
-                fill_details.append((current_volume, current_price))
-                remaining -= current_volume
-                current_price += price_impact_tick
-                current_volume = initial_ask_volume # assume each price level has the same volume as the original ask_volume (naive implementation)
-
-        # Compute the volume-weighted average fill price
-        total_shares = sum([fd[0] for fd in fill_details])
-        dollar_spent = sum([fd[0] * fd[1] for fd in fill_details])
-        avg_price = dollar_spent / total_shares if total_shares > 0 else current_price
-
-        return total_shares, avg_price
-
-    def _simulate_sell(self, shares_to_sell: int, initial_bid_price: float, initial_bid_volume: int):
-        """
-        Naive partial-fill simulation for a SELL order
-        """
-        remaining = shares_to_sell
-        current_price = initial_bid_price
-        current_volume = initial_bid_volume
-        
-        fill_details = []  # (shares_filled, fill_price)
-        price_impact_tick = 0.01  # how much the bid moves down each time we deplete available volume
-
-        while remaining > 0:
-            if current_volume >= remaining: # we fill the entire remainder at current_price
-                fill_details.append((remaining, current_price))
-                current_volume -= remaining
-                remaining = 0
-            else: # consume all of current_volume at current_price
-                fill_details.append((current_volume, current_price))
-                remaining -= current_volume
-                current_price -= price_impact_tick
-                current_volume = initial_bid_volume # Assume each price level has the same volume as the original ask_volume (naive implementation)
-
-        # Volume-weighted average fill price
-        total_shares = sum([fd[0] for fd in fill_details])
-        dollar_gained = sum([fd[0] * fd[1] for fd in fill_details])
-        avg_price = dollar_gained / total_shares if total_shares > 0 else current_price
-
-        return total_shares, avg_price
-
+    
     def calculate_metrics(self) -> Dict[str, float]:
         """
-        Summarize performance:
-          - Overall "mid-price VWAP" from the entire day (for reference)
-          - Average execution price (for buys and sells)
-          - Execution cost vs. mid-price VWAP
-          - Simple slippage measure, referencing the midprice
+        Calculates the following metrics:
+          1. Overall VWAP.
+          2. Average execution price.
+          3. Execution cost vs VWAP.
+          4. Simple slippage measure.
         """
-        if not self.execution_records:
-            return {
-                'Overall Mid VWAP': 0.0,
-                'Avg Execution Price': 0.0,
-                'Execution Cost vs. Mid VWAP': 0.0,
-                'Slippage (volume weighted average)': 0.0
-            }
-
         exec_df = pd.DataFrame(self.execution_records)
-
-        # 1. Overall mid-price VWAP across entire day
+        if exec_df.empty:
+            return {
+                'Overall VWAP': 0.0,
+                'Avg Execution Price': 0.0,
+                'Execution Cost vs. VWAP': 0.0,
+                'Slippage (average)': 0.0
+            }
+        
+        # 1. Overall VWAP from market environment
         mkt_df = self.market_env.market_data
-        dollar_volume = (mkt_df['mid_price'] * mkt_df['total_volume']).sum()
-        overall_volume = mkt_df['total_volume'].sum()
-        overall_mid_vwap = dollar_volume / overall_volume
-
+        total_dollar_volume = (mkt_df['price'] * mkt_df['volume']).sum()
+        total_volume = mkt_df['volume'].sum()
+        overall_vwap = total_dollar_volume / total_volume
+        
         # 2. Average execution price
-        total_shares_exec = exec_df['execution_volume'].sum()
-        total_exec_dollars = (exec_df['execution_price'] * exec_df['execution_volume']).sum()
-        avg_exec_price = total_exec_dollars / total_shares_exec
-
-        # 3. Execution cost vs. mid-price VWAP
-        # If we are buying, cost is (avg_exec_price - mid_vwap).
-        # If we are selling, cost could be (mid_vwap - avg_exec_price).
-        # Here we just compute the difference for simplicity
-        exec_cost = avg_exec_price - overall_mid_vwap
-
-        # 4. VOlume weighted average slippage
+        total_exec_dollar = (exec_df['execution_price'] * exec_df['execution_volume']).sum()
+        total_exec_volume = exec_df['execution_volume'].sum()
+        avg_exec_price = total_exec_dollar / total_exec_volume
+        
+        # 3. Execution cost vs. VWAP
+        exec_cost = avg_exec_price - overall_vwap
+        
+        # 4. Slippage
         merged = pd.merge(
-            exec_df,
-            mkt_df[['timestamp', 'mid_price']],
-            left_on='timestamp',
+            exec_df, 
+            mkt_df, 
+            left_on='timestamp', 
             right_on='timestamp',
             how='left'
-        )
-        merged['slippage_per_share'] = merged['execution_price'] - merged['mid_price']
+        ) # merge execution times with corresponding market prices to see deviation
+        merged['slippage_per_share'] = merged['execution_price'] - merged['price']
         merged['weighted_slippage'] = merged['slippage_per_share'] * merged['execution_volume']
         total_slippage = merged['weighted_slippage'].sum()
-        avg_slippage = total_slippage / total_shares_exec
-
+        avg_slippage = total_slippage / total_exec_volume
+        
         return {
-            'Overall Mid VWAP': overall_mid_vwap,
+            'Overall VWAP': overall_vwap,
             'Avg Execution Price': avg_exec_price,
-            'Execution Cost vs. Mid VWAP': exec_cost,
+            'Execution Cost vs. VWAP': exec_cost,
             'Slippage (average)': avg_slippage
         }
 
     def plot_results(self):
         """
-        Plot the mid_price over time along with execution points.
+        Plot the market price and overlay execution points.
         """
         if not self.execution_records:
             print("No executions to plot.")
             return
         
-        exec_df = pd.DataFrame(self.execution_records)
         mkt_df = self.market_env.market_data
-
+        exec_df = pd.DataFrame(self.execution_records)
+        
         plt.figure(figsize=(10, 5))
-        plt.plot(mkt_df['timestamp'], mkt_df['mid_price'], label='Mid Price')
+        plt.plot(mkt_df['timestamp'], mkt_df['price'], label='Market Price')
         plt.scatter(exec_df['timestamp'], exec_df['execution_price'], 
                     color='red', label='Executions', s=10)
-        plt.title(f"Executions vs. Market Mid Price - {self.strategy.strategy_name}")
+        plt.xticks(rotation=45)
         plt.xlabel("Time")
         plt.ylabel("Price")
+        plt.title(f"{self.strategy.strategy_name} Execution vs. Market Price")
         plt.legend()
-        plt.xticks(rotation=45)
         plt.tight_layout()
         plt.show()
 
+
 if __name__ == "__main__":
-    # Example 1: Low volatility, no volume spikes, BUY side
+
+    # Simple scenario with standard volatility and no volume spike
     market_env1 = MarketEnvironment(
         start_price=100.0,
-        num_points=50,  # shorter day for demonstration
+        num_points=390,
         base_volume=300,
-        volatility_factor=0.1,
+        volatility_factor=0.2,
         volume_spike_probability=0.0,
-        volume_spike_factor=2.0,
-        fixed_spread=0.05
+        volume_spike_factor=3.0
     )
-    twap_buy_strategy = TWAPStrategy(total_shares=1000, total_steps=50, side="BUY")
-    backtester_buy = Backtester(market_env1, twap_buy_strategy)
-    backtester_buy.run()
-    metrics_buy = backtester_buy.calculate_metrics()
+    twap_strategy1 = TWAPStrategy(total_shares=10000, total_steps=390)
+    backtester1 = Backtester(market_env=market_env1, strategy=twap_strategy1)
+    backtester1.run()
+    metrics1 = backtester1.calculate_metrics()
     
-    print("Example 1\n")
-    for k, v in metrics_buy.items():
+    for k, v in metrics1.items():
         print(f"{k}: {v:.4f}")
-    backtester_buy.plot_results()
-
-    # Example 2: Higher volatility, occasional volume spikes, SELL side
+    
+    backtester1.plot_results()
+    
+    # Scenario with higher volatility and a midday volume spike
     market_env2 = MarketEnvironment(
-        start_price=200.0,
-        num_points=50,
-        base_volume=500,
-        volatility_factor=0.3,
-        volume_spike_probability=0.2,
-        volume_spike_factor=3.0,
-        fixed_spread=0.10
+        start_price=100.0,
+        num_points=390,
+        base_volume=300,
+        volatility_factor=0.5, # higher volatility
+        volume_spike_probability=0.1, # volume spike around midday
+        volume_spike_factor=5.0
     )
-    twap_sell_strategy = TWAPStrategy(total_shares=1000, total_steps=50, side="SELL")
-    backtester_sell = Backtester(market_env2, twap_sell_strategy)
-    backtester_sell.run()
-    metrics_sell = backtester_sell.calculate_metrics()
+    twap_strategy2 = TWAPStrategy(total_shares=10000, total_steps=390)
+    backtester2 = Backtester(market_env=market_env2, strategy=twap_strategy2)
+    backtester2.run()
+    metrics2 = backtester2.calculate_metrics()
     
-    print("Example 2\n")
-    for k, v in metrics_sell.items():
+    for k, v in metrics2.items():
         print(f"{k}: {v:.4f}")
-    backtester_sell.plot_results()
+    
+    backtester2.plot_results()
