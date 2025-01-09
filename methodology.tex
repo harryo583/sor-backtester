@@ -1,0 +1,131 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{enumitem}
+\usepackage[top=1in, bottom=1in, left=0.75in, right=0.75in]{geometry}
+
+\title{A Proposed Backtesting Framework for SOR}
+\author{Hongyi (Harry) Wang}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section*{Part 1: Methodology and Framework}
+
+\section{Introduction}
+Smart Order Routing (SOR) optimizes trade execution by sending orders to multiple trading venues to achieve optimal execution results. A robust backtesting framework is crucial for evaluating SOR strategies before live deployment. This document proposes a backtesting methodology that covers the following:
+\begin{itemize}
+    \item Data generation \& handling,
+    \item SOR execution strategies,
+    \item Performance metrics,
+    \item Simulation logic,
+    \item System extensibility.
+\end{itemize}
+
+\section{Data Pipeline}
+\subsection{Data Sourcing}
+\begin{enumerate}[label=\arabic*.]
+    \item \textbf{Market Data:} Historical limit order book (LOB) data, including time-stamped bids, asks, and trades from multiple venues. For simplicity, I'm modeling prices using a random walk and volume with the Poisson Distribution. Realistically, data sources may include:
+    \begin{itemize}
+        \item Direct exchange feeds (e.g., NASDAQ TotalView, NYSE OpenBook),
+        \item Consolidated feeds (e.g., consolidated tape for equities),
+        \item Third-party data vendors offering aggregated or raw LOB snapshots.
+    \end{itemize}
+    \item \textbf{Order Flow Data:} Historical order placement and execution details. This is crucial for simulating realistic behavior and measuring slippage or partial fills. For simplicity, I assume in my implementation that each level of the order book has the same volume, and that the volume is spread 50-50 between bids and asks.
+\end{enumerate}
+
+\subsection{Data Processing}
+\begin{enumerate}[label=\arabic*.]
+    \item \textbf{Resampling \& Synchronization:}
+    \begin{itemize}
+        \item Align bid/ask updates and trade ticks across multiple venues on a common timeline. For simplicity, I'm ignoring this feature in my implementation.
+        \item Handle different data frequencies (e.g. top-of-book vs. full depth-of-book, 1-second bars vs. tick-by-tick).
+    \end{itemize}
+    \item \textbf{Data Cleaning:}
+    \begin{itemize}
+        \item Use forward-fill or backward-fill methods for missing bid/ask prices to maintain consistency in market snapshots.
+        \item For large gaps, use interpolation techniques or exclude affected intervals to avoid introducing bias.
+        \item Verify data integrity (e.g. check for out-of-order timestamps and reorder data where necessary to preserve temporal accuracy; validate that bids are always lower than asks).
+    \end{itemize}
+    \item \textbf{Data Storage \& Access:}
+    \begin{itemize}
+        \item Use a time-series database or columnar storage for efficient slicing of relevant time windows. I'm using a Pandas dataframe in my implementation, again for simplicity.
+        \item Preferably, maintain an interface for on-demand retrieval of LOB snapshots at any given timestamp.
+    \end{itemize}
+\end{enumerate}
+
+\subsection{Data Handling Challenges}
+\begin{itemize}
+    \item \textbf{Missing Data:} Implement interpolation or carry-forward last known best bid/ask if updates are missing.
+    \item \textbf{Latency \& Out-of-Sync Feeds:} Use event-time or exchange timestamps to re-sequence data. For instance, consider FIFO ordering for same-timestamp events.
+    \item \textbf{Complexity:} Multi-venue data can grow large; efficient I/O and caching are essential for scalable backtesting. Again such subtleties are ignored in this sample implementation.
+\end{itemize}
+
+\section{Execution Strategies}
+\subsection{TWAP (Time-Weighted Average Price)}
+\begin{itemize}
+    \item \textbf{Definition:} Divides the total order into equal parts, executed evenly over a specified time window.
+    \item \textbf{Mechanics:}
+    \begin{itemize}
+        \item Split order size into chunks.
+        \item Schedule orders at fixed time intervals that are integral multiples of a timestep (e.g. every minute).
+        \item Optionally place limit or market orders depending on aggressiveness.
+    \end{itemize}
+    \item \textbf{Sensitivity to Market Conditions:}
+    \begin{itemize}
+        \item In highly volatile markets, static time-slicing may lead to higher slippage.
+        \item Rapid price movement can render fixed-interval orders less optimal.
+        \item The empirical results are discussed in detail in the report.
+    \end{itemize}
+\end{itemize}
+
+\subsection{VWAP (Volume-Weighted Average Price)}
+\begin{itemize}
+    \item \textbf{Definition:} Executes in proportion to observed trading volume.
+    \item \textbf{Mechanics:}
+    \begin{itemize}
+        \item Estimate volume distribution for the day (historical or real-time on-the-fly).
+        \item Allocate slices of the total order relative to each time interval’s forecasted volume.
+    \end{itemize}
+    \item \textbf{Sensitivity to Market Conditions:}
+    \begin{itemize}
+        \item Low liquidity periods may lead to partial fills or higher spreads.
+        \item Sudden spikes in volume can cause overshooting or undershooting the target (well reflected in the results).
+    \end{itemize}
+\end{itemize}
+
+\subsection{Other Considerations}
+\begin{itemize}
+    \item \textbf{Adaptive SOR:} Dynamically adjust slice size or venue preference based on real-time market signals (liquidity, spreads, volume).
+    \item \textbf{Market vs Limit Orders:} Balance immediate execution (market) against better pricing (limit).
+\end{itemize}
+
+\section{Performance Metrics}
+\begin{enumerate}[label=\arabic*.]
+    \item \textbf{Execution Cost:} Difference between executed prices and a price benchmark (e.g. VWAP, mid-price at order submission).
+    \item \textbf{Slippage:} Difference between expected and actual execution prices, computed as a volume weighted average.
+    \item \textbf{Fill Rate / Fill Probability:} Ratio of shares/contracts filled vs. total order size.
+    \item \textbf{Implementation Shortfall (IS):} Total cost of completing a trade relative to decision time price.
+    \item \textbf{Latency / Execution Time:} Time from order release to fill confirmation.
+\end{enumerate}
+
+\section{Simulation Logic}
+In my implementation, the backtesting loop is orchestrated by a dedicated \texttt{Backtester} class. It uses the following steps on each simulation timestep:
+\begin{itemize}
+    \item \textbf{Market Environment State:} A \texttt{MarketEnvironment} class generates time-series data (bid/ask prices, volumes) via a synthetic random walk. On any timestep, we can retrieve the current bid/ask snapshot and volumes.
+    \item \textbf{Strategy Interaction:} The \texttt{Strategy} interface (and its TWAP/VWAP variants) determines how many shares to trade. Each step, the strategy’s \texttt{generate\_orders} method is called with current market data.
+    \item \textbf{Partial-Fill Logic:} The \texttt{Backtester} then simulates actual fills. For a \texttt{BUY}, we calculate a naive partial-fill price impact by consuming as much volume as possible at the current ask, then moving to the next price level if still unfilled. Conversely, for a \texttt{SELL}, we deplete the bid volumes and move down if more shares remain. This is handled in private helper methods \texttt{\_simulate\_buy()} and \texttt{\_simulate\_sell()}.
+    \item \textbf{Record-Keeping:} Each executed portion of the order is stored (price, volume, timestamp) to compute metrics later. The environment is then advanced by one timestep.
+    \item \textbf{Metrics:} After all time steps are exhausted, the \texttt{Backtester} aggregates metrics (slippage, average fill price, etc.) and plots execution activity against the synthetic price series.
+\end{itemize}
+This framework is flexible for plugging in different strategies and can be extended to handle more sophisticated partial-fill models or multi-venue logic.
+
+\section{Extensibility and Scalability}
+In my codebase, the \texttt{Strategy} abstraction is designed so that new execution methods can be quickly implemented, while the \texttt{Backtester} remains unchanged. Likewise, the \texttt{MarketEnvironment} can be swapped out for real historical data or a more detailed simulation engine. Some additional points include:
+\begin{itemize}
+    \item \textbf{Multi-Leg Strategies:} The approach can be adapted to multi-leg derivatives. We can add additional classes or modify the order fill logic if required for correlated instruments.
+    \item \textbf{Parallelization:} Running many Monte Carlo simulations is trivial by distributing multiple Backtester instances across CPU threads or compute nodes.
+    \item \textbf{Plugin-Based Architecture:} By registering strategies or loading them from external modules, it is easy to integrate new SOR strategies without disrupting the core backtesting loop.
+\end{itemize}
+
+\end{document}
