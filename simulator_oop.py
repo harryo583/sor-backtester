@@ -134,77 +134,75 @@ class TWAPStrategy(Strategy):
     """
     Slices the total order evenly across all time steps.
     """
-    def __init__(self, total_shares: int, total_steps: int):
-        super().__init__(total_shares, strategy_name="TWAP")
+    def __init__(self, total_shares: int, total_steps: int, side: str = "BUY"):
+        super().__init__(total_shares, strategy_name="TWAP", side=side)
         self.shares_per_step = total_shares // total_steps if total_steps > 0 else 0
         self.remaining_shares = total_shares
 
     def generate_orders(self, market_info: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Execute a fixed slice at each step until all shares are allocated.
-        """
         if market_info is None or self.remaining_shares <= 0:
-            return {'shares_to_execute': 0, 'price': 0.0, 'timestamp': None}
+            return {
+                'shares_to_execute': 0, 
+                'side': self.side,
+                'timestamp': None
+            }
         
         shares = min(self.shares_per_step, self.remaining_shares)
-        price = market_info['price']
-        ts = market_info['time']
-        
         self.accumulated_shares += shares
         self.remaining_shares -= shares
         
         return {
             'shares_to_execute': shares,
-            'price': price,
-            'timestamp': ts
+            'side': self.side,
+            'timestamp': market_info['time']
         }
 
-class VWAPStrategy(Strategy):
-    """
-    Allocates order slices proportional to the volume traded.
-    Aims to match the overall intraday volume distribution.
-    """
-    def __init__(self, total_shares: int, market_env: MarketEnvironment):
-        super().__init__(total_shares, strategy_name="VWAP")
-        self.market_env = market_env
+# class VWAPStrategy(Strategy):
+#     """
+#     Allocates order slices proportional to the volume traded.
+#     Aims to match the overall intraday volume distribution.
+#     """
+#     def __init__(self, total_shares: int, market_env: MarketEnvironment):
+#         super().__init__(total_shares, strategy_name="VWAP")
+#         self.market_env = market_env
         
-        # Precompute the cumulative volume distribution for the day
-        self.vwap_weights = self._compute_vwap_weights()
-        self.remaining_shares = total_shares
+#         # Precompute the cumulative volume distribution for the day
+#         self.vwap_weights = self._compute_vwap_weights()
+#         self.remaining_shares = total_shares
 
-    def _compute_vwap_weights(self) -> List[float]:
-        """
-        Helper method; calculate the proportional weight for each time step based on forecasted volume.
-        """
-        total_volume = self.market_env.market_data['volume'].sum()
-        weights = self.market_env.market_data['volume'] / total_volume
-        return weights.tolist()
+#     def _compute_vwap_weights(self) -> List[float]:
+#         """
+#         Helper method; calculate the proportional weight for each time step based on forecasted volume.
+#         """
+#         total_volume = self.market_env.market_data['volume'].sum()
+#         weights = self.market_env.market_data['volume'] / total_volume
+#         return weights.tolist()
 
-    def generate_orders(self, market_info: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Allocate shares to be traded in the current time step based on the precomputed VWAP weights.
-        """
-        if market_info is None or self.remaining_shares <= 0:
-            return {'shares_to_execute': 0, 'price': 0.0, 'timestamp': None}
+#     def generate_orders(self, market_info: Dict[str, Any]) -> Dict[str, Any]:
+#         """
+#         Allocate shares to be traded in the current time step based on the precomputed VWAP weights.
+#         """
+#         if market_info is None or self.remaining_shares <= 0:
+#             return {'shares_to_execute': 0, 'price': 0.0, 'timestamp': None}
 
-        # Get the weight for the current step and calculate shares to trade
-        current_step = self.market_env.current_step
-        weight = self.vwap_weights[current_step]
-        shares_this_step = int(self.total_shares * weight)
-        shares_this_step = min(shares_this_step, self.remaining_shares)  # ensure we don't over-allocate
+#         # Get the weight for the current step and calculate shares to trade
+#         current_step = self.market_env.current_step
+#         weight = self.vwap_weights[current_step]
+#         shares_this_step = int(self.total_shares * weight)
+#         shares_this_step = min(shares_this_step, self.remaining_shares)  # ensure we don't over-allocate
 
-        # Market info
-        price = market_info['price']
-        ts = market_info['time']
+#         # Market info
+#         price = market_info['price']
+#         ts = market_info['time']
 
-        self.accumulated_shares += shares_this_step
-        self.remaining_shares -= shares_this_step
+#         self.accumulated_shares += shares_this_step
+#         self.remaining_shares -= shares_this_step
 
-        return {
-            'shares_to_execute': shares_this_step,
-            'price': price,
-            'timestamp': ts
-        }
+#         return {
+#             'shares_to_execute': shares_this_step,
+#             'price': price,
+#             'timestamp': ts
+#         }
 
 class Backtester:
     """
