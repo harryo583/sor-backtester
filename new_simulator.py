@@ -367,7 +367,13 @@ class Backtester:
 # main()
 
 if __name__ == "__main__":
-    # Example 1: Low volatility, no volume spikes, BUY side
+    
+    # Experiment 1: low volatility, no volume spikes, BUY side
+    
+    print("--------------------------------------------------------------------------")
+    print("Experiment 1: low volatility, no volume spikes, BUY side")
+    print("--------------------------------------------------------------------------")
+
     market_env1 = MarketEnvironment(
         start_price=100.0,
         num_points=50,
@@ -382,12 +388,16 @@ if __name__ == "__main__":
     backtester_buy.run()
     metrics_buy = backtester_buy.calculate_metrics()
     
-    print("Example 1 (BUY)\n")
     for k, v in metrics_buy.items():
         print(f"{k}: {v:.4f}")
     backtester_buy.plot_results()
 
-    # Example 2: Higher volatility, occasional volume spikes, SELL side
+    # Example 2: higher volatility, occasional volume spikes, SELL side
+    
+    print("--------------------------------------------------------------------------")
+    print("Example 2: higher volatility, occasional volume spikes, SELL side")
+    print("--------------------------------------------------------------------------")
+    
     market_env2 = MarketEnvironment(
         start_price=200.0,
         num_points=50,
@@ -402,7 +412,84 @@ if __name__ == "__main__":
     backtester_sell.run()
     metrics_sell = backtester_sell.calculate_metrics()
     
-    print("\nExample 2 (SELL)\n")
     for k, v in metrics_sell.items():
         print(f"{k}: {v:.4f}")
     backtester_sell.plot_results()
+    
+    # Experiment 3: high spread, large order size, BUY side
+    
+    print("--------------------------------------------------------------------------")
+    print("Experiment 3: high spread, large order size, BUY side")
+    print("--------------------------------------------------------------------------")
+    
+    market_env3 = MarketEnvironment(
+        start_price=150.0,
+        num_points=100,
+        base_volume=200,
+        volatility_factor=0.15,
+        volume_spike_probability=0.05,
+        volume_spike_factor=4.0,
+        fixed_spread=0.5
+    )
+    twap_large_buy_strategy = TWAPStrategy(total_shares=50000, total_steps=100, side="BUY")
+    backtester_large_buy = Backtester(market_env3, twap_large_buy_strategy)
+    backtester_large_buy.run()
+    metrics_large_buy = backtester_large_buy.calculate_metrics()
+
+    for k, v in metrics_large_buy.items():
+        print(f"{k}: {v:.4f}")
+    backtester_large_buy.plot_results()
+    
+    # Experiment 4: low liquidity, SELL side
+    
+    print("--------------------------------------------------------------------------")
+    print("Experiment 4: low liquidity, SELL side")
+    print("--------------------------------------------------------------------------")
+    
+    market_env4 = MarketEnvironment(
+        start_price=120.0,
+        num_points=50,
+        base_volume=50, # low base volume
+        volatility_factor=0.2,
+        volume_spike_probability=0.1,
+        volume_spike_factor=2.5,
+        fixed_spread=0.1
+    )
+    twap_low_liquidity_sell_strategy = TWAPStrategy(total_shares=8000, total_steps=50, side="SELL")
+    backtester_low_liquidity_sell = Backtester(market_env4, twap_low_liquidity_sell_strategy)
+    backtester_low_liquidity_sell.run()
+    metrics_low_liquidity_sell = backtester_low_liquidity_sell.calculate_metrics()
+
+    for k, v in metrics_low_liquidity_sell.items():
+        print(f"{k}: {v:.4f}")
+    backtester_low_liquidity_sell.plot_results()
+
+    # Experiment 5: Randomized volatility and spread, SELL side
+    
+    print("--------------------------------------------------------------------------")
+    print("Experiment 5: Randomized volatility and spread, SELL side")
+    print("--------------------------------------------------------------------------")
+    
+    volatility_series = np.random.uniform(0.05, 0.5, 100)  # varying volatility
+    spread_series = np.random.uniform(0.02, 0.2, 100)  # varying spread
+
+    market_env5 = MarketEnvironment(
+        start_price=180.0,
+        num_points=100,
+        base_volume=300,
+        volatility_factor=0.1,
+        volume_spike_probability=0.05,
+        volume_spike_factor=3.0,
+        fixed_spread=0.1
+    )
+    market_env5.market_data['volatility_factor'] = volatility_series
+    market_env5.market_data['fixed_spread'] = spread_series
+
+    twap_randomized_sell_strategy = TWAPStrategy(total_shares=5000, total_steps=100, side="SELL")
+    backtester_randomized_sell = Backtester(market_env5, twap_randomized_sell_strategy)
+    backtester_randomized_sell.run()
+    metrics_randomized_sell = backtester_randomized_sell.calculate_metrics()
+
+    for k, v in metrics_randomized_sell.items():
+        print(f"{k}: {v:.4f}")
+    backtester_randomized_sell.plot_results()
