@@ -13,7 +13,7 @@
 \section*{Part 1: Methodology and Framework}
 
 \section{Introduction}
-Smart Order Routing (SOR) optimizes trade execution by sending orders to multiple trading venues to achieve optimal execution results. A robust backtesting framework is crucial for evaluating SOR strategies before live deployment. This document proposes a backtesting methodology that covers the following:
+Smart Order Routing (SOR) optimizes trade execution by breaking and distributing orders into multiple parts and multiple trading venues to achieve optimal execution results. A robust backtesting framework is crucial for evaluating SOR strategies before live deployment. This document proposes a backtesting methodology that covers the following:
 \begin{itemize}
     \item Data generation \& handling,
     \item SOR execution strategies,
@@ -27,8 +27,8 @@ Smart Order Routing (SOR) optimizes trade execution by sending orders to multipl
 \begin{enumerate}[label=\arabic*.]
     \item \textbf{Market Data:} Historical limit order book (LOB) data, including time-stamped bids, asks, and trades from multiple venues. For simplicity, I'm modeling prices using a random walk and volume with the Poisson Distribution. Realistically, data sources may include:
     \begin{itemize}
-        \item Direct exchange feeds (e.g., NASDAQ TotalView, NYSE OpenBook),
-        \item Consolidated feeds (e.g., consolidated tape for equities),
+        \item Direct exchange feeds (e.g. NASDAQ TotalView, NYSE OpenBook),
+        \item Consolidated feeds (e.g. consolidated tape for equities),
         \item Third-party data vendors offering aggregated or raw LOB snapshots.
     \end{itemize}
     \item \textbf{Order Flow Data:} Historical order placement and execution details. This is crucial for simulating realistic behavior and measuring slippage or partial fills. For simplicity, I assume in my implementation that each level of the order book has the same volume, and that the volume is spread 50-50 between bids and asks.

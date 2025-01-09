@@ -1,6 +1,6 @@
 # Fdb version 4
-["pdflatex"] 1736451430 "/Users/hongyiwang/Desktop/Blockhouse/GitHub/sor-backtester/methodology.tex" "methodology.pdf" "methodology" 1736451431 0
-  "/Users/hongyiwang/Desktop/Blockhouse/GitHub/sor-backtester/methodology.tex" 1736451428 8973 ec57207cef0c1d51e5bed2da4d8872cb ""
+["pdflatex"] 1736451865 "/Users/hongyiwang/Desktop/Blockhouse/GitHub/sor-backtester/methodology.tex" "methodology.pdf" "methodology" 1736451866 0
+  "/Users/hongyiwang/Desktop/Blockhouse/GitHub/sor-backtester/methodology.tex" 1736451865 9010 d8ddf7ade2fe99844079bfcd044154ad ""
   "/usr/local/texlive/2023/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc" 1136849721 2900 1537cc8184ad1792082cd229ecc269f4 ""
   "/usr/local/texlive/2023/texmf-dist/fonts/map/fontname/texfonts.map" 1577235249 3524 cb3e574dea2d1052e39280babc910dc8 ""
   "/usr/local/texlive/2023/texmf-dist/fonts/tfm/jknappen/ec/tcrm1000.tfm" 1136768653 1536 e07581a4bb3136ece9eeb4c3ffab8233 ""
@@ -44,8 +44,8 @@
   "/usr/local/texlive/2023/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1703747523 4623355 b8cad38412faebe1ce5b780a45db67bd ""
   "/usr/local/texlive/2023/texmf-var/web2c/pdftex/pdflatex.fmt" 1703747454 7883456 8337ab5debcd6018d3de26cb2041afef ""
   "/usr/local/texlive/2023/texmf.cnf" 1678822455 577 1b2b1af17af2508fb20dd85783af4050 ""
-  "methodology.aux" 1736451431 1369 df44536b335bacdc07b99ed7ea390479 "pdflatex"
-  "methodology.tex" 1736451428 8973 ec57207cef0c1d51e5bed2da4d8872cb ""
+  "methodology.aux" 1736451866 1369 df44536b335bacdc07b99ed7ea390479 "pdflatex"
+  "methodology.tex" 1736451865 9010 d8ddf7ade2fe99844079bfcd044154ad ""
   (generated)
   "methodology.aux"
   "methodology.log"
