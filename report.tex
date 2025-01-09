@@ -1,0 +1,62 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amsfonts,amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+
+\begin{document}
+
+\textbf{Smart Order Routing Backtesting: Implementation and results}\\[6pt]
+
+\noindent
+\textbf{Implementation Approach.} The backtesting simulator is organized into three core classes:
+
+\begin{itemize}
+  \item \textbf{MarketEnvironment:} Generates synthetic market data using random walk prices and Poisson-distributed volumes and optional spikes (occurring with a given fixed probability). Track bid/ask quotes and volumes in discrete time steps.
+  \item \textbf{Strategy:} Encapsulates the trading logic. Every strategy must inherit from this base class and specify a method to generate orders based on market conditions. For this trial, a \textit{TWAPStrategy} (Time-Weighted Average Price) is employed as requested on the task description. It evenly spreads the total order quantity across the time steps.
+  \item \textbf{Backtester:} Orchestrates each step by retrieving the market state, requesting trade sizes from the strategy, simulating partial fills (with naive price impact) and recording fill details for performance metrics.
+\end{itemize}
+
+\noindent
+\textbf{Key Metrics.} After each simulation, the following are computed:
+\begin{itemize}
+  \item \textit{Overall Mid VWAP:} A reference benchmark derived from total dollar volume and total volume throughout the day.
+  \item \textit{Average Execution Price:} Volume-weighted average of fill prices.
+  \item \textit{Execution Cost vs.\ Mid VWAP:} Average execution price minus overall mid VWAP, indicating how costly or favorable the fills were relative to the mean of the day.
+  \item \textit{Slippage:} Difference between the quoted price (bid or ask, depending on the order side) at the time of order submission (the expected trade price) and the actual fill price.
+\end{itemize}
+
+\noindent
+\textbf{Results and Observations.} 
+A series of experiments was carried out under various volatility, spread, and liquidity conditions.
+
+\begin{itemize}
+  \item \textbf{Low Volatility, No Volume Spikes (BUY):} 
+  With volatility around \(0.1\) and a tight spread, the execution cost was close to the mid VWAP (\(+0.0271\)), and slippage was small (\(+0.0025\)). This indicates that under stable market conditions with sufficient volume, the TWAP strategy efficiently fills orders near the quoted prices.
+  
+  \item \textbf{High Volatility, Occasional Volume Spikes (SELL):} 
+  When volatility increased to \(\approx 0.3\) and volume spikes occurred, the final average execution price was slightly \textit{better} than the mid VWAP (\(-0.0410\)), suggesting that in a rapidly changing market, the TWAP strategy can occasionally benefit from favorable price movements. However, slippage against the quoted price was more pronounced (\(\approx 0.0308\)). This reflects the challenge of crossing spreads in turbulent markets.
+
+  \item \textbf{High Spread, Large Order Size (BUY):}
+  With a wider fixed spread (\(0.5\)) and higher total shares (100000), the execution cost increased (\(+0.3363\)), indicating a higher premium paid above the mid VWAP. Furthermore, average slippage increased to 0.0423, indicating reduced efficiency of a trading strategy when a large order results in nonnegligible and adverse price impact, which aligns with our expectations, and while the TWAP approach helped distribute the order in time, the wide spread naturally raised the overall execution cost.
+
+  \item \textbf{Low Liquidity (SELL):}
+  Under low-volume conditions, partial fills were common, and additional price impact was observed. The strategy still managed a slightly better average execution price than the mid VWAP (\(-0.0859\)), but slippage saw a noticeable increase (\(+0.0263\)). This shows that, as one might expect, thin liquidity leads to executing multiple price levels, resulting in larger intraday price movements while trading.
+
+  \item \textbf{Randomized Volatility and Spread (SELL):}
+  With continuously varying volatility factors and spread values, results showed an execution cost of \(-0.0526\) versus the mid VWAP, implying slight improvement. Interestingly, the measured slippage was near zero. This suggests that spreading the order out over time allowed fills that balanced out the random fluctuations of both volatility and spread levels.
+\end{itemize}
+
+\noindent
+\textbf{Summary of Patterns.} 
+\begin{itemize}
+    \item \textit{Volatility} influences execution cost and slippage. Increased volatility can lead to faster price movements, at times favoring the trader and at other times increasing the cost of crossing the spread.
+    \item \textit{Spread} naturally affects overall transaction costs. Wider spreads lead to higher execution costs, although a TWAP approach limits drastic impact by distributing trades over the day.
+    \item \textit{Base Volume} naturally affects slippage. In a highly liquid market where base volume is large relative to the order volume, a TWAP approach (or any approach in general) will see reduced slippage due to increased likelihood of fully-filled orders.
+    \item \textit{Liquidity and Volume Spikes} affect the depth available at each price level. Under thin liquidity, the price impact is more pronounced as partial fills climb up or down the order book.
+    \item \textit{Strategy Robustness.} Despite varying market conditions, the TWAP strategy maintains a consistent, predictable pattern of executions. Although the slippage varies, the experiments demonstrate that it can track and measure these differences accurately.
+\end{itemize}
+
+Overall, the backtesting framework produces meaningful performance metrics, highlighting how different market parameters affect the execution of a trade. The modular design (especially with the Strategy class) supports the addition of more complex strategies, multi-venue routing, or RL-based approaches for further research.
+
+\end{document}

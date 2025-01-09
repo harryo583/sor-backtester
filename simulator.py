@@ -431,7 +431,7 @@ if __name__ == "__main__":
         volume_spike_factor=4.0,
         fixed_spread=0.5
     )
-    twap_large_buy_strategy = TWAPStrategy(total_shares=50000, total_steps=100, side="BUY")
+    twap_large_buy_strategy = TWAPStrategy(total_shares=100000, total_steps=100, side="BUY")
     backtester_large_buy = Backtester(market_env3, twap_large_buy_strategy)
     backtester_large_buy.run()
     metrics_large_buy = backtester_large_buy.calculate_metrics()
