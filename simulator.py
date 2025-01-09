@@ -1,3 +1,5 @@
+# simulator.py
+
 import abc
 import numpy as np
 import pandas as pd
@@ -162,6 +164,79 @@ class TWAPStrategy(Strategy):
             'side': self.side,
             'timestamp': market_info['time']
         }
+
+
+###############
+# VWAPStrategy
+###############
+
+
+class VWAPStrategy(Strategy):
+    """
+    Dynamically adjusts the frequency of order placements based on elapsed time & observed volume since the last order.
+    At any time t, fraction of total shares executed ~ fraction of day's volume elapsed.
+    """
+
+    def __init__(self, total_shares: int, side: str = "BUY", volume_threshold_frac: float = 0.05, time_threshold_steps: int = 10):
+        super().__init__(total_shares, strategy_name="VWAP_Dynamic", side=side)
+        self.volume_threshold_frac = volume_threshold_frac
+        self.time_threshold_steps = time_threshold_steps
+        self.total_day_volume_estimate = 0 # keep track of overall day's expected volume
+        self.cum_volume_so_far = 0
+        self.last_rebalance_step = 0 # last time we placed an order
+        self.current_step = 0 # current step
+        self.volume_since_last_order = 0
+
+    def generate_orders(self, market_info):
+        """
+        Decide how many shares to execute at the current time.
+        Executed_shares / total_shares ~ cum_volume_so_far / total_day_volume_estimate
+        """
+        if market_info is None: # the simulation is over or no market info
+            return {'shares_to_execute': 0, 'side': self.side, 'timestamp': None}
+
+        self.current_step += 1
+
+        # On the first call, guess the total_day_volume_estimate from market environment NOTE should modify
+        if self.total_day_volume_estimate == 0:
+            self.total_day_volume_estimate = 390 * 300
+
+        step_volume = market_info['bid_volume'] + market_info['ask_volume']
+        self.cum_volume_so_far += step_volume
+        self.volume_since_last_order += step_volume
+
+        fraction_of_volume_elapsed = self.cum_volume_so_far / self.total_day_volume_estimate
+        target_shares_executed = fraction_of_volume_elapsed * self.total_shares
+
+        # Diff between how many shares we should have executed vs how many we have
+        shares_to_catch_up = int(target_shares_executed - self.accumulated_shares)
+        if shares_to_catch_up < 0: # we are ahead so don't trade
+            shares_to_catch_up = 0
+
+        # Check if we surpass time/volume thresholds to actually place an order
+        time_since_last_order = self.current_step - self.last_rebalance_step
+        volume_frac_since_last_order = self.volume_since_last_order / self.total_day_volume_estimate
+
+        if shares_to_catch_up > 0 and (
+            time_since_last_order >= self.time_threshold_steps or
+            volume_frac_since_last_order >= self.volume_threshold_frac
+        ): #  we passed the time threshold OR we passed the volume fraction threshold, place order
+            self.last_rebalance_step = self.current_step
+            self.volume_since_last_order = 0  # reset
+            self.accumulated_shares += shares_to_catch_up # update counters
+            
+            return {
+                'shares_to_execute': shares_to_catch_up,
+                'side': self.side,
+                'timestamp': market_info['time']
+            }
+        else: # no order this step
+            return {
+                'shares_to_execute': 0,
+                'side': self.side,
+                'timestamp': market_info['time']
+            }
+
 
 
 #############
@@ -493,3 +568,118 @@ if __name__ == "__main__":
     for k, v in metrics_randomized_sell.items():
         print(f"{k}: {v:.4f}")
     backtester_randomized_sell.plot_results()
+
+    
+    # Bonus experiments: VWAPStrategy vs TWAPStrategy
+    
+    print("--------------------------------------------------------------------------")
+    print("Bonus experiments: VWAPStrategy vs TWAPStrategy")
+    print("--------------------------------------------------------------------------")
+    
+    print("------SELL------")
+    
+    market_env_comp_sell = MarketEnvironment(
+        start_price=200.0,
+        num_points=80,
+        base_volume=400,
+        volatility_factor=0.3,
+        volume_spike_probability=0.2,
+        volume_spike_factor=2.5,
+        fixed_spread=0.10
+    )
+    
+    # VWAP
+    
+    vwap_sell_strategy = VWAPStrategy(
+        total_shares=20000,
+        side="SELL",
+        volume_threshold_frac=0.10,
+        time_threshold_steps=15
+    )
+    backtester_vwap_sell = Backtester(market_env_comp_sell, vwap_sell_strategy)
+    backtester_vwap_sell.run()
+    metrics_vwap_sell = backtester_vwap_sell.calculate_metrics()
+    print("\nVWAP SELL metrics:")
+    for k, v in metrics_vwap_sell.items():
+        print(f"{k}: {v:.4f}")
+        
+    # TWAP
+
+    twap_sell_strategy = TWAPStrategy(
+        total_shares=20000,
+        total_steps=80,
+        side="SELL"
+    )
+    
+    # Refresh the market!
+    market_env_comp_sell_2 = MarketEnvironment(
+        start_price=200.0,
+        num_points=80,
+        base_volume=400,
+        volatility_factor=0.3,
+        volume_spike_probability=0.2,
+        volume_spike_factor=2.5,
+        fixed_spread=0.10
+    )
+    backtester_twap_sell = Backtester(market_env_comp_sell_2, twap_sell_strategy)
+    backtester_twap_sell.run()
+    metrics_twap_sell = backtester_twap_sell.calculate_metrics()
+    print("\nTWAP SELL metrics:")
+    for k, v in metrics_twap_sell.items():
+        print(f"{k}: {v:.4f}")
+    
+    
+    print("------BUY------")
+    
+    market_env_comp_buy = MarketEnvironment(
+        start_price=100.0,
+        num_points=60,
+        base_volume=300,
+        volatility_factor=0.2,
+        volume_spike_probability=0.1,
+        volume_spike_factor=3.0,
+        fixed_spread=0.05
+    )
+
+    # VWAP
+    vwap_buy_strategy = VWAPStrategy(
+        total_shares=15000,
+        side="BUY",
+        volume_threshold_frac=0.05,
+        time_threshold_steps=10
+    )
+    backtester_vwap_buy = Backtester(market_env_comp_buy, vwap_buy_strategy)
+    backtester_vwap_buy.run()
+    metrics_vwap_buy = backtester_vwap_buy.calculate_metrics()
+    print("\nVWAP BUY metrics:")
+    for k, v in metrics_vwap_buy.items():
+        print(f"{k}: {v:.4f}")
+
+    # TWAP
+    twap_buy_strategy = TWAPStrategy(
+        total_shares=15000,
+        total_steps=60,
+        side="BUY"
+    )
+    # Refresh the market environemnt
+    market_env_comp_buy_2 = MarketEnvironment(
+        start_price=100.0,
+        num_points=60,
+        base_volume=300,
+        volatility_factor=0.2,
+        volume_spike_probability=0.1,
+        volume_spike_factor=3.0,
+        fixed_spread=0.05
+    )
+    backtester_twap_buy = Backtester(market_env_comp_buy_2, twap_buy_strategy)
+    backtester_twap_buy.run()
+    metrics_twap_buy = backtester_twap_buy.calculate_metrics()
+    print("\nTWAP BUY metrics:")
+    for k, v in metrics_twap_buy.items():
+        print(f"{k}: {v:.4f}")
+    
+    # Plot results
+    backtester_vwap_sell.plot_results()
+    backtester_twap_sell.plot_results()
+    backtester_vwap_buy.plot_results()
+    backtester_twap_buy.plot_results()
